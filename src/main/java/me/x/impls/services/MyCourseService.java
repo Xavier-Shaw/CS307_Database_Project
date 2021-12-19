@@ -26,13 +26,13 @@ public class MyCourseService implements CourseService {
     public int addAtomPrerequisite(CoursePrerequisite atomPrerequisite){
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_stmt = connection.prepareStatement(
-                     "insert into prerequisite_list (type) values ('ATOM');"
+                     "insert into prerequisite_list (type) values ('Atom');"
              );
              PreparedStatement query = connection.prepareStatement(
                      "select count(*) from prerequisite_list;"
              );
              PreparedStatement second_stmt = connection.prepareStatement(
-                     "insert into AtomPrerequisites (listId, courseId) values (?,?);"
+                     "insert into \"AtomPrerequisites\" (\"listId\", \"courseId\") values (?,?);"
              );
         ) {
             first_stmt.execute();
@@ -41,43 +41,67 @@ public class MyCourseService implements CourseService {
             int list_id = result.getInt(1);
             second_stmt.setInt(1,list_id);
             second_stmt.setString(2, atomPrerequisite.courseID);
+            second_stmt.execute();
             return list_id;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
     }
 
-    public int add_And_Or_Prerequisite(ArrayList<Integer> terms, boolean isAndPrerequisite){
+
+    public int add_Or_Prerequisite(ArrayList<Integer> terms){
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_stmt = connection.prepareStatement(
-                     "insert into prerequisite_list (type) values (?);"
+                     "insert into prerequisite_list (type) values ('Or');"
              );
              PreparedStatement query = connection.prepareStatement(
                      "select count(*) from prerequisite_list;"
              );
              PreparedStatement second_stmt = connection.prepareStatement(
-                     "insert into ? (listId, terms) values (?,?);"
+                     "insert into \"OrPrerequisites\" (\"listId\", terms) values (?,?);"
              );
         ) {
-            String table;
-            if (isAndPrerequisite){
-                first_stmt.setString(1,"AND");
-                table = "AndPrerequisites";
-            }else {
-                first_stmt.setString(1,"OR");
-                table = "OrPrerequisites";
-            }
 
             first_stmt.execute();
             ResultSet result = query.executeQuery();
             result.next();
             int listId = result.getInt(1);
-            second_stmt.setString(1,table);
-            second_stmt.setInt(2,listId
-            );
+
+            second_stmt.setInt(1,listId);
             Integer[] term_ids = terms.toArray(new Integer[0]);
             Array array = connection.createArrayOf("int", term_ids);
-            second_stmt.setArray(3,array);
+            second_stmt.setArray(2,array);
+            second_stmt.execute();
+
+            return listId;
+        } catch (SQLException e) {
+            throw new EntityNotFoundException();
+        }
+    }
+
+    public int add_And_Prerequisite(ArrayList<Integer> terms){
+        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
+             PreparedStatement first_stmt = connection.prepareStatement(
+                     "insert into prerequisite_list (type) values ('And');"
+             );
+             PreparedStatement query = connection.prepareStatement(
+                     "select count(*) from prerequisite_list;"
+             );
+             PreparedStatement second_stmt = connection.prepareStatement(
+                     "insert into \"AndPrerequisites\" (\"listId\", terms) values (?,?);"
+             );
+        ) {
+            first_stmt.execute();
+            ResultSet result = query.executeQuery();
+            result.next();
+            int listId = result.getInt(1);
+
+            second_stmt.setInt(1,listId);
+            Integer[] term_ids = terms.toArray(new Integer[0]);
+            Array array = connection.createArrayOf("int", term_ids);
+            second_stmt.setArray(2,array);
+            second_stmt.execute();
+
             return listId;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
@@ -94,7 +118,7 @@ public class MyCourseService implements CourseService {
                  ((AndPrerequisite) prerequisite).terms) {
                 term_ids.add(handlePrerequisite(term));
             }
-            return add_And_Or_Prerequisite(term_ids,true);
+            return add_And_Prerequisite(term_ids);
         }
         else {
             ArrayList<Integer> term_ids = new ArrayList<>();
@@ -102,7 +126,7 @@ public class MyCourseService implements CourseService {
                     ((OrPrerequisite)prerequisite).terms) {
                 term_ids.add(handlePrerequisite(term));
             }
-            return add_And_Or_Prerequisite(term_ids,false);
+            return add_Or_Prerequisite(term_ids);
         }
     }
 
@@ -122,7 +146,7 @@ public class MyCourseService implements CourseService {
     public void addCourse(String courseId, String courseName, int credit, int classHour, Course.CourseGrading grading, @Nullable Prerequisite prerequisite) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "insert into Courses (courseId, courseName, credit, classHour, grading, root_Prerequisite) values (?,?,?,?,?,?);")) {
+                     "insert into \"Courses\" (\"courseId\", \"courseName\", credit, \"classHour\", grading, root_prerequisite) values (?,?,?,?,?,?);")) {
             stmt.setString(1, courseId);
             stmt.setString(2,courseName);
             stmt.setInt(3,credit);
@@ -153,7 +177,7 @@ public class MyCourseService implements CourseService {
     public int addCourseSection(String courseId, int semesterId, String sectionName, int totalCapacity) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "insert into courseSections (courseId, semesterId, sectionName, totalCapacity, leftCapacity) values (?,?,?,?,?);")) {
+                     "insert into \"courseSections\" (\"courseId\", \"semesterId\", \"sectionName\", \"totalCapacity\", \"leftCapacity\") values (?,?,?,?,?);")) {
             stmt.setString(1, courseId);
             stmt.setInt(2,semesterId);
             stmt.setString(3,sectionName);
@@ -182,7 +206,7 @@ public class MyCourseService implements CourseService {
     public int addCourseSectionClass(int sectionId, int instructorId, DayOfWeek dayOfWeek, Set<Short> weekList, short classStart, short classEnd, String location) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "insert into courseSectionClasses (sectionId, instructorId, dayOfWeek, weekList, classStart, classEnd, location) values (?,?,?,?,?,?,?);")) {
+                     "insert into \"courseSectionClasses\" (\"sectionId\", \"instructorId\", \"dayOfWeek\", \"weekList\", \"classStart\", \"classEnd\", location) values (?,?,?,?,?,?,?);")) {
             stmt.setInt(1,sectionId);
             stmt.setInt(2,instructorId);
             stmt.setString(3, dayOfWeek.name());
@@ -211,9 +235,9 @@ public class MyCourseService implements CourseService {
     public void removeCourse(String courseId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "delete from Courses where (courseId) = (?);");
+                     "delete from \"Courses\" where (\"courseId\") = (?);");
              PreparedStatement query = connection.prepareStatement(
-                     "select id from courseSections where courseId = (?) "
+                     "select id from \"courseSections\" where \"courseId\" = (?) "
              )
         ) {
             stmt.setString(1, courseId);
@@ -242,9 +266,9 @@ public class MyCourseService implements CourseService {
     public void removeCourseSection(int sectionId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "delete from courseSections where (id) = (?);");
+                     "delete from \"courseSections\" where (id) = (?);");
              PreparedStatement query = connection.prepareStatement(
-                     "select id from courseSectionClasses where sectionId = (?)"
+                     "select id from \"courseSectionClasses\" where \"sectionId\" = (?)"
              )
         ) {
             stmt.setInt(1, sectionId);
@@ -271,7 +295,7 @@ public class MyCourseService implements CourseService {
     public void removeCourseSectionClass(int classId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "delete from courseSectionClasses where (id) = (?);")) {
+                     "delete from \"courseSectionClasses\" where (id) = (?);")) {
             stmt.setInt(1, classId);
             stmt.execute();
         } catch (SQLException e) {
@@ -284,7 +308,7 @@ public class MyCourseService implements CourseService {
     public List<Course> getAllCourses() {
         ArrayList<Course> courses = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement stmt = connection.prepareStatement("select * from Courses;")) {
+             PreparedStatement stmt = connection.prepareStatement("select * from \"Courses\";")) {
             ResultSet resultSet = stmt.executeQuery();
             while(resultSet.next()) {
                 Course course = new Course();   //first column is the auto inc id
@@ -301,10 +325,10 @@ public class MyCourseService implements CourseService {
                 }
                 courses.add(course);
             }
+            return courses;
         } catch (SQLException e) {
-            throw new EntityNotFoundException();
+            return courses;
         }
-        return courses;
     }
 
 
@@ -323,7 +347,7 @@ public class MyCourseService implements CourseService {
     public List<CourseSection> getCourseSectionsInSemester(String courseId, int semesterId) {
         ArrayList<CourseSection> sections = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement stmt = connection.prepareStatement("select * from courseSections where courseId = (?) and semesterId = (?);")) {
+             PreparedStatement stmt = connection.prepareStatement("select * from \"courseSections\" where \"courseId\" = (?) and \"semesterId\" = (?);")) {
             stmt.setString(1,courseId);
             stmt.setInt(2,semesterId);
             ResultSet resultSet = stmt.executeQuery();
@@ -353,7 +377,7 @@ public class MyCourseService implements CourseService {
 
     public Course getCourseByCourseId(String courseId){
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement getCourse = connection.prepareStatement("select * from Courses where courseId = (?);")) {
+             PreparedStatement getCourse = connection.prepareStatement("select * from \"Courses\" where \"courseId\" = (?);")) {
 
             getCourse.setString(1, courseId);
             ResultSet result = getCourse.executeQuery();
@@ -386,8 +410,8 @@ public class MyCourseService implements CourseService {
     @Override
     public Course getCourseBySection(int sectionId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select courseId from courseSections where id = (?);");
-             PreparedStatement second_query = connection.prepareStatement("select * from Courses where courseId = (?);")) {
+             PreparedStatement first_query = connection.prepareStatement("select \"courseId\" from \"courseSections\" where id = (?);");
+             PreparedStatement second_query = connection.prepareStatement("select * from \"Courses\" where \"courseId\" = (?);")) {
             first_query.setInt(1, sectionId);
             ResultSet resultSet = first_query.executeQuery();
             String courseId = null;
@@ -435,7 +459,7 @@ public class MyCourseService implements CourseService {
     public List<CourseSectionClass> getCourseSectionClasses(int sectionId) {
         ArrayList<CourseSectionClass> classes = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from courseSectionClasses where sectionId = (?);")
+             PreparedStatement first_query = connection.prepareStatement("select * from \"courseSectionClasses\" where \"sectionId\" = (?);")
         ) {
             first_query.setInt(1, sectionId);
             ResultSet resultSet = first_query.executeQuery();
@@ -507,8 +531,8 @@ public class MyCourseService implements CourseService {
     @Override
     public CourseSection getCourseSectionByClass(int classId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select sectionId from courseSectionClasses where id = (?);");
-             PreparedStatement second_query = connection.prepareStatement("select * from courseSections where id = (?);")
+             PreparedStatement first_query = connection.prepareStatement("select \"sectionId\" from \"courseSectionClasses\" where id = (?);");
+             PreparedStatement second_query = connection.prepareStatement("select * from \"courseSections\" where id = (?);")
         ) {
             first_query.setInt(1,classId);
             ResultSet resultSet = first_query.executeQuery();
@@ -549,7 +573,7 @@ public class MyCourseService implements CourseService {
         ArrayList<Student> students = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement getStudentId = connection.prepareStatement(
-                     "select studentId from students_sections where semesterId = (?) and courseId = (?) ");
+                     "select \"studentId\" from students_sections where \"semesterId\" = (?) and \"courseId\" = (?) ");
         ) {
             getStudentId.setString(1,courseId);
             getStudentId.setInt(2,semesterId);

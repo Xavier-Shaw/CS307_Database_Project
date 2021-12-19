@@ -23,7 +23,7 @@ public class MySemesterService implements SemesterService {
     @Override
     public int addSemester(String name, Date begin, Date end) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("insert into Semesters (name, begin_date, end_date) values (?,?,?) ;");
+             PreparedStatement first_query = connection.prepareStatement("insert into \"Semesters\" (name, begin_date, end_date) values (?,?,?) ;");
         ) {
             if (begin.after(end)){
                 throw new IntegrityViolationException();
@@ -49,7 +49,7 @@ public class MySemesterService implements SemesterService {
     @Override
     public void removeSemester(int semesterId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("delete from Semesters where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("delete from \"Semesters\" where id = (?)");
         ) {
             first_query.setInt(1,semesterId);
             first_query.execute();
@@ -62,7 +62,7 @@ public class MySemesterService implements SemesterService {
     public List<Semester> getAllSemesters() {
         ArrayList<Semester> semesters = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Semesters");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Semesters\"");
         ) {
             ResultSet resultSet = first_query.executeQuery();
             while (resultSet.next()){
@@ -75,14 +75,14 @@ public class MySemesterService implements SemesterService {
             }
             return semesters;
         } catch (SQLException e) {
-            throw new EntityNotFoundException();
+            return semesters;
         }
     }
 
     @Override
     public Semester getSemester(int semesterId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Semesters where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Semesters\" where id = (?)");
         ) {
             first_query.setInt(1,semesterId);
             ResultSet resultSet = first_query.executeQuery();

@@ -25,8 +25,8 @@ public class MyDepartmentService implements DepartmentService {
     @Override
     public int addDepartment(String name) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("insert into Departments (name) values (?)");
-             PreparedStatement second_query = connection.prepareStatement("select id from Departments where name = (?)")
+             PreparedStatement first_query = connection.prepareStatement("insert into \"Departments\" (name) values (?);");
+             PreparedStatement second_query = connection.prepareStatement("select id from \"Departments\" where name = (?)")
         ) {
             first_query.setString(1,name);
             second_query.setString(1,name);
@@ -42,7 +42,7 @@ public class MyDepartmentService implements DepartmentService {
     @Override
     public void removeDepartment(int departmentId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("delete from Departments where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("delete from \"Departments\" where id = (?)");
         ) {
             first_query.setInt(1,departmentId);
             first_query.execute();
@@ -55,7 +55,7 @@ public class MyDepartmentService implements DepartmentService {
     public List<Department> getAllDepartments() {
         ArrayList<Department> departments = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Departments");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Departments\"");
         ) {
             ResultSet resultSet = first_query.executeQuery();
             while (resultSet.next()){
@@ -66,7 +66,7 @@ public class MyDepartmentService implements DepartmentService {
             }
             return departments;
         } catch (SQLException e) {
-            throw new EntityNotFoundException();
+            return departments;
         }
     }
 
@@ -79,7 +79,7 @@ public class MyDepartmentService implements DepartmentService {
     @Override
     public Department getDepartment(int departmentId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Departments where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Departments\" where id = (?)");
         ) {
             first_query.setInt(1,departmentId);
             ResultSet resultSet = first_query.executeQuery();

@@ -17,11 +17,18 @@ public class MyMajorService implements MajorService {
     @Override
     public int addMajor(String name, int departmentId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("insert into Majors (name, departmentId) values (?,?);");
+             PreparedStatement addMajor = connection.prepareStatement("insert into \"Majors\" (name, \"departmentId\") values (?,?);");
+             PreparedStatement getId = connection.prepareStatement(
+                     "select id from  \"Majors\" where name = (?);"
+             )
         ) {
-            first_query.setString(1,name);
-            first_query.setInt(2,departmentId);
-            return first_query.executeUpdate();
+            addMajor.setString(1,name);
+            addMajor.setInt(2,departmentId);
+            addMajor.execute();
+            getId.setString(1,name);
+            ResultSet resultSet = getId.executeQuery();
+            resultSet.next();
+            return resultSet.getInt(1);
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -38,7 +45,7 @@ public class MyMajorService implements MajorService {
     @Override
     public void removeMajor(int majorId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("delete from Majors where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("delete from \"Majors\" where id = (?)");
              PreparedStatement second_query = connection.prepareStatement("")
         ) {
             first_query.setInt(1,majorId);
@@ -53,7 +60,7 @@ public class MyMajorService implements MajorService {
     public List<Major> getAllMajors() {
         ArrayList<Major> majors = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Majors");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Majors\"");
         ) {
             ResultSet resultSet = first_query.executeQuery();
             while (resultSet.next()){
@@ -65,7 +72,7 @@ public class MyMajorService implements MajorService {
             }
             return majors;
         } catch (SQLException e) {
-            throw new EntityNotFoundException();
+            return majors;
         }
     }
 
@@ -78,7 +85,7 @@ public class MyMajorService implements MajorService {
     @Override
     public Major getMajor(int majorId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Majors where id = ?");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Majors\" where id = ?");
         ) {
             first_query.setInt(1,majorId);
             ResultSet resultSet = first_query.executeQuery();
@@ -105,8 +112,8 @@ public class MyMajorService implements MajorService {
     @Override
     public void addMajorCompulsoryCourse(int majorId, String courseId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select id from Courses where courseId = (?);");
-             PreparedStatement second_query = connection.prepareStatement("insert into majorCourses (majorId, courseId, selection) values (?, ?, 'COMPULSORY')")
+             PreparedStatement first_query = connection.prepareStatement("select id from \"Courses\" where \"courseId\" = (?);");
+             PreparedStatement second_query = connection.prepareStatement("insert into \"majorCourses\" (\"majorId\", \"courseId\", selection) values (?, ?, 'COMPULSORY')")
         ) {
             first_query.setString(1,courseId);
             ResultSet resultSet = first_query.executeQuery();
@@ -129,8 +136,8 @@ public class MyMajorService implements MajorService {
     @Override
     public void addMajorElectiveCourse(int majorId, String courseId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select id from Courses where courseId = (?);");
-             PreparedStatement second_query = connection.prepareStatement("insert into majorCourses (majorId, courseId, selection) values (?, ?, 'ELECTIVE')")
+             PreparedStatement first_query = connection.prepareStatement("select id from \"Courses\" where \"courseId\" = (?);");
+             PreparedStatement second_query = connection.prepareStatement("insert into \"majorCourses\" (\"majorId\", \"courseId\", selection) values (?, ?, 'ELECTIVE')")
         ) {
             first_query.setString(1,courseId);
             ResultSet resultSet = first_query.executeQuery();

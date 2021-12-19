@@ -16,7 +16,7 @@ public class MyInstructorService implements InstructorService {
     @Override
     public void addInstructor(int userId, String firstName, String lastName) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("insert into Instructors (userId, firstName, lastName) values (?,?,?)");
+             PreparedStatement first_query = connection.prepareStatement("insert into \"Instructors\" (\"userId\", \"firstName\", \"lastName\") values (?,?,?)");
         ) {
             // Add a user account for this instructor as well
             MyUserService myUserService = new MyUserService();
@@ -35,7 +35,7 @@ public class MyInstructorService implements InstructorService {
 
     public CourseSection getCourseSectionByIdAndSemester(int sectionId, int semesterId){
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement stmt = connection.prepareStatement("select * from courseSections where sectionId = (?) and semesterId = (?);")) {
+             PreparedStatement stmt = connection.prepareStatement("select * from courseSections where \"sectionId\" = (?) and \"semesterId\" = (?);")) {
             stmt.setInt(1,sectionId);
             stmt.setInt(2,semesterId);
             ResultSet resultSet = stmt.executeQuery();
@@ -61,7 +61,7 @@ public class MyInstructorService implements InstructorService {
         ArrayList<CourseSection> courseSections = new ArrayList<>();
         //courseId, semesterId, sectionName, totalCapacity, leftCapacity
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select sectionId from courseSectionClasses where instructorId = ? ;");
+             PreparedStatement first_query = connection.prepareStatement("select \"sectionId\" from \"courseSectionClasses\" where \"instructorId\" = ? ;");
         ) {
             first_query.setInt(1,instructorId);
             ResultSet resultSet = first_query.executeQuery();

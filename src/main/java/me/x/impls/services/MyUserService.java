@@ -21,7 +21,7 @@ public class MyUserService implements UserService {
     public void addUser(int userId, String firstName, String lastName){
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_query = connection.prepareStatement(
-                     "insert into Users (userId, firstName, lastName) values (?,?,?);");
+                     "insert into \"Users\" (\"userId\", \"firstName\", \"lastName\") values (?,?,?);");
         ) {
             first_query.setInt(1,userId);
             first_query.setString(2,firstName);
@@ -37,7 +37,7 @@ public class MyUserService implements UserService {
     public void removeUser(int userId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_query = connection.prepareStatement(
-                     "delete from Users where userId = (?);"
+                     "delete from \"Users\" where \"userId\" = (?);"
              )
         ) {
             first_query.setInt(1,userId);
@@ -51,12 +51,11 @@ public class MyUserService implements UserService {
     public List<User> getAllUsers() {
         ArrayList<User> users = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Users");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Users\"");
         ) {
             ResultSet resultSet = first_query.executeQuery();
-            boolean empty = true;
+
             while (resultSet.next()){
-                empty = false;
                 User user = new Instructor();
                 user.id = resultSet.getInt(1);
                 String firstName = resultSet.getString(2);
@@ -71,21 +70,16 @@ public class MyUserService implements UserService {
                 users.add(user);
             }
 
-            if (empty){
-                throw new EntityNotFoundException();
-            }
-            else {
-                return users;
-            }
+            return users;
         } catch (SQLException e) {
-            throw new EntityNotFoundException();
+            return users;
         }
     }
 
     @Override
     public User getUser(int userId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from Users where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Users\" where id = (?)");
         ) {
             first_query.setInt(1,userId);
             ResultSet resultSet = first_query.executeQuery();

@@ -20,7 +20,7 @@ public class MyStudentService implements StudentService {
 
     /**
      * Add one student according to following parameters.
-     * If some of parameters are invalid, throw {@link cn.edu.sustech.cs307.exception.IntegrityViolationException}
+     * If some parameters are invalid, throw {@link cn.edu.sustech.cs307.exception.IntegrityViolationException}
      *
      * @param userId
      * @param majorId
@@ -33,7 +33,7 @@ public class MyStudentService implements StudentService {
         //
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_query = connection.prepareStatement(
-                     "insert into students (userId, majorId, firstName, lastName, enrolledDate) values (?,?,?,?,?); ");
+                     "insert into \"Students\" (\"userId\", \"majorId\", \"firstName\", \"lastName\", \"enrolledDate\") values (?,?,?,?,?); ");
         ) {
             //Add a user account for the student
             MyUserService userService = new MyUserService();
@@ -95,7 +95,8 @@ public class MyStudentService implements StudentService {
              PreparedStatement first_query = connection.prepareStatement("");
              PreparedStatement second_query = connection.prepareStatement("")
         ) {
-
+            List<CourseSearchEntry> courseSearchEntries = new ArrayList<>();
+            return courseSearchEntries;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -122,14 +123,16 @@ public class MyStudentService implements StudentService {
     public EnrollResult enrollCourse(int studentId, int sectionId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement get_course_section = connection.prepareStatement(
-                     "select courseId, semesterId, leftCapacity from courseSections where id = (?)");
+                     "select \"courseId\", \"semesterId\", \"leftCapacity\" from courseSections where id = (?)");
              PreparedStatement check_student_section = connection.prepareStatement(
-                     "select sectionId from students_sections where studentId = (?) and courseId = (?) and semesterId = (?);");
+                     "select \"sectionId\" from students_sections where \"studentId\" = (?) and \"courseId\" = (?) and \"semesterId\" = (?);");
              PreparedStatement check_passed_the_course = connection.prepareStatement(
-                     "select grade from students_course_grade where studentId = (?) and courseId = (?);");
+                     "select grade from students_course_grade where \"studentId\" = (?) and \"courseId\" = (?);");
              PreparedStatement enrollCourse = connection.prepareStatement(
-                     "insert into students_sections (studentId, semesterId, courseId, sectionId) values (?,?,?,?);"
-                     + "update courseSections set leftCapacity = leftCapacity - 1 where id = (?);"
+                     "insert into students_sections (\"studentId\", \"semesterId\", \"courseId\", \"sectionId\") values (?,?,?,?);"
+             );
+             PreparedStatement fix_capacity = connection.prepareStatement(
+                     "update \"courseSections\" set \"leftCapacity\" = \"leftCapacity\" - 1 where id = (?);"
              )
         ) {
             /*TODO:
@@ -238,12 +241,34 @@ public class MyStudentService implements StudentService {
             enrollCourse.setInt(2,semesterId);
             enrollCourse.setString(3,courseId);
             enrollCourse.setInt(4,sectionId);
-            enrollCourse.setInt(5,sectionId);
             enrollCourse.execute();
+
+            fix_capacity.setInt(1,sectionId);
+            fix_capacity.execute();
             return EnrollResult.SUCCESS;
 
         } catch (SQLException e) {
-            throw new EntityNotFoundException();
+            return EnrollResult.UNKNOWN_ERROR;
+        }
+    }
+
+
+    public void checkGrade(int studentId, String courseId){
+        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
+            PreparedStatement getGrade = connection.prepareStatement(
+                    "select grade from students_course_grade where \"studentId\" = (?) and \"courseId\" = (?);"
+            )
+        ) {
+            getGrade.setInt(1,studentId);
+            getGrade.setString(2,courseId);
+            ResultSet grade_result = getGrade.executeQuery();
+            if (grade_result.next()) {
+                short grade = grade_result.getShort(1);
+                if (grade != -1) {
+                    throw new IllegalStateException();
+                }
+            }
+        } catch (SQLException ignored) {
         }
     }
 
@@ -259,11 +284,10 @@ public class MyStudentService implements StudentService {
     public void dropCourse(int studentId, int sectionId) throws IllegalStateException {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement get_course_section = connection.prepareStatement(
-                     "select courseId, semesterId from courseSections where id = (?);");
-             PreparedStatement check_grade = connection.prepareStatement(
-                     "select grade from students_course_grade where studentId = (?) and courseId = (?);");
+                     "select \"courseId\", \"semesterId\" from \"courseSections\" where id = (?);");
+
              PreparedStatement drop_section = connection.prepareStatement(
-                     "delete from students_sections where studentId = (?) and sectionId = (?) and semesterId = (?);")
+                     "delete from students_sections where \"studentId\" = (?) and \"sectionId\" = (?) and \"semesterId\" = (?);")
         ) {
             get_course_section.setInt(1,sectionId);
             ResultSet section_result = get_course_section.executeQuery();
@@ -271,19 +295,13 @@ public class MyStudentService implements StudentService {
             String courseId = section_result.getString(1);
             int semesterId = section_result.getInt(2);
 
-            check_grade.setInt(1,studentId);
-            check_grade.setString(2,courseId);
-            ResultSet grade_result = check_grade.executeQuery();
-            grade_result.next();
-            short grade = grade_result.getShort(1);
-            if (grade != -1){
-                throw new IllegalStateException();
-            }
+            checkGrade(studentId,courseId);
 
             drop_section.setInt(1,studentId);
             drop_section.setInt(2,sectionId);
             drop_section.setInt(3,semesterId);
             drop_section.execute();
+
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -312,9 +330,9 @@ public class MyStudentService implements StudentService {
     public void addEnrolledCourseWithGrade(int studentId, int sectionId, @Nullable Grade grade) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement getCourseGrade = connection.prepareStatement(
-                     "select gradeType from students_course_grade where studentId = (?) and courseId = (?)");
+                     "select \"gradeType\" from students_course_grade where \"studentId\" = (?) and \"courseId\" = (?)");
              PreparedStatement setGrade = connection.prepareStatement(
-                     "insert into students_course_grade (studentId, courseId, gradeType, grade) values (?,?,?,?);")
+                     "insert into students_course_grade (\"studentId\", \"courseId\", \"gradeType\", grade) values (?,?,?,?);")
         ) {
             Course course = new MyCourseService().getCourseBySection(sectionId);
             String courseId = course.id;
@@ -370,13 +388,13 @@ public class MyStudentService implements StudentService {
     public void setEnrolledCourseGrade(int studentId, int sectionId, Grade grade) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement getGradeType = connection.prepareStatement(
-                     "select gradeType from students_course_grade where studentId = (?) and courseId = (?);"
+                     "select \"gradeType\" from students_course_grade where \"studentId\" = (?) and \"courseId\" = (?);"
              );
              PreparedStatement getCourseGrade = connection.prepareStatement(
-                     "select gradeType from students_course_grade where studentId = (?) and courseId = (?)"
+                     "select \"gradeType\" from students_course_grade where \"studentId\" = (?) and \"courseId\" = (?)"
              );
              PreparedStatement setGarde = connection.prepareStatement(
-                     "update students_course_grade set gradeType = (?), grade = (?) where studentId = (?) and courseId = (?)")
+                     "update students_course_grade set \"gradeType\" = (?), grade = (?) where \"studentId\" = (?) and \"courseId\" = (?)")
         ) {
             Course course = new MyCourseService().getCourseBySection(sectionId);
             String courseId = course.id;
@@ -437,11 +455,11 @@ public class MyStudentService implements StudentService {
         Map<Course, Grade> course_grade_Map = new HashMap<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement get_student_sections_by_semester = connection.prepareStatement(
-                     "select sectionId from students_sections where studentId = (?) and semesterId = (?);");
+                     "select \"sectionId\" from students_sections where \"studentId\" = (?) and \"semesterId\" = (?);");
              PreparedStatement getGrade = connection.prepareStatement(
-                     "select gradeType, grade from students_course_grade where studentId = (?) and courseId = (?);");
+                     "select \"gradeType\", grade from students_course_grade where \"studentId\" = (?) and \"courseId\" = (?);");
              PreparedStatement getAllGrade = connection.prepareStatement(
-                     "select courseId, gradeType, grade from students_course_grade where studentId = (?);"
+                     "select \"courseId\", \"gradeType\", grade from students_course_grade where \"studentId\" = (?);"
              )
         ) {
             get_student_sections_by_semester.setInt(1,studentId);
@@ -533,9 +551,9 @@ public class MyStudentService implements StudentService {
              PreparedStatement getSemester = connection.prepareStatement(
                      "select id, begin_date from Semesters where begin_date <= (?) and end_date >= (?);");
              PreparedStatement get_student_sections = connection.prepareStatement(
-                     "select sectionId from students_sections where studentId = (?) and semesterId = (?);");
+                     "select \"sectionId\" from students_sections where \"studentId\" = (?) and \"semesterId\" = (?);");
              PreparedStatement get_section = connection.prepareStatement(
-                     "select courseId, sectionName from courseSections where sectionId = (?);"
+                     "select \"courseId\", \"sectionName\" from courseSections where \"sectionId\" = (?);"
              )
         ) {
             getSemester.setDate(1,date);
@@ -615,7 +633,7 @@ public class MyStudentService implements StudentService {
             courseTable.table.put(DayOfWeek.SUNDAY,SUNDAY_Set);
             return courseTable;
         } catch (SQLException e) {
-            throw new EntityNotFoundException();
+            return courseTable;
         }
     }
 
@@ -623,9 +641,9 @@ public class MyStudentService implements StudentService {
     public boolean getGrade(int studentId, int listId){
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement getAtomCourseId = connection.prepareStatement(
-                     "select courseId from AtomPrerequisites where listId = (?)");
+                     "select \"courseId\" from AtomPrerequisites where \"listId\" = (?)");
              PreparedStatement getGrade = connection.prepareStatement(
-                     "select grade from students_course_grade where studentId = (?) and courseId = (?);")
+                     "select grade from students_course_grade where \"studentId\" = (?) and \"courseId\" = (?);")
         ) {
             getAtomCourseId.setInt(1,listId);
             ResultSet resultSet = getAtomCourseId.executeQuery();
@@ -649,7 +667,7 @@ public class MyStudentService implements StudentService {
              PreparedStatement getType = connection.prepareStatement(
                      "select type from prerequisite_list where id = (?)");
              PreparedStatement getTerms = connection.prepareStatement(
-                     "select terms from ? where listId = (?)");
+                     "select terms from ? where \"listId\" = (?)");
         ) {
             getType.setInt(1,listId);
             ResultSet res = getType.executeQuery();
@@ -715,7 +733,7 @@ public class MyStudentService implements StudentService {
     public boolean passedPrerequisitesForCourse(int studentId, String courseId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement get_root_prerequisite = connection.prepareStatement(
-                     "select root_prerequisite from Courses where courseId = (?);");
+                     "select root_prerequisite from \"Courses\" where \"courseId\" = (?);");
 
         ) {
             get_root_prerequisite.setString(1,courseId);
@@ -736,7 +754,7 @@ public class MyStudentService implements StudentService {
     @Override
     public Major getStudentMajor(int studentId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select majorId from Students where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("select \"majorId\" from Students where id = (?)");
              PreparedStatement second_query = connection.prepareStatement("select * from Majors where id = ?")
         ) {
             first_query.setInt(1,studentId);
@@ -764,17 +782,17 @@ public class MyStudentService implements StudentService {
     public Student getStudentById(int studentId){
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
             PreparedStatement getStudent = connection.prepareStatement(
-                    "select userId, majorId, firstName, lastName, enrolledDate from Students where id = (?);"
+                    "select \"majorId\", \"firstName\", \"lastName\", \"enrolledDate\" from \"Students\" where \"userId\" = (?);"
             )
         ){
             getStudent.setInt(1, studentId);
             ResultSet studentSet = getStudent.executeQuery();
             studentSet.next();
-            int userId = studentSet.getInt(1);
-            int majorId = studentSet.getInt(2);
-            String firstName = studentSet.getString(3);
-            String lastName = studentSet.getString(4);
-            Date enrolledDate = studentSet.getDate(5);
+
+            int majorId = studentSet.getInt(1);
+            String firstName = studentSet.getString(2);
+            String lastName = studentSet.getString(3);
+            Date enrolledDate = studentSet.getDate(4);
             Major major = new MyMajorService().getMajor(majorId);
             byte judge = (byte) firstName.charAt(0);
             String fullName;
@@ -785,7 +803,7 @@ public class MyStudentService implements StudentService {
                 fullName = firstName + lastName;
             }
             Student student = new Student();
-            student.id = userId;
+            student.id = studentId;
             student.major = major;
             student.fullName = fullName;
             student.enrolledDate = enrolledDate;
