@@ -71,13 +71,14 @@ public class MyCourseService implements CourseService {
             first_stmt.execute();
             ResultSet result = query.executeQuery();
             result.next();
-            int list_id = result.getInt(1);
+            int listId = result.getInt(1);
             second_stmt.setString(1,table);
-            second_stmt.setInt(2,list_id);
+            second_stmt.setInt(2,listId
+            );
             Integer[] term_ids = terms.toArray(new Integer[0]);
             Array array = connection.createArrayOf("int", term_ids);
             second_stmt.setArray(3,array);
-            return list_id;
+            return listId;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -307,6 +308,7 @@ public class MyCourseService implements CourseService {
     }
 
 
+
     /**
      * Return all satisfied CourseSections.
      * We will compare the all other fields in CourseSection besides the id.
@@ -348,6 +350,34 @@ public class MyCourseService implements CourseService {
     }
 
 
+
+    public Course getCourseByCourseId(String courseId){
+        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
+             PreparedStatement getCourse = connection.prepareStatement("select * from Courses where courseId = (?);")) {
+
+            getCourse.setString(1, courseId);
+            ResultSet result = getCourse.executeQuery();
+            result.next();
+            Course course = new Course();    //first column is the auto inc id
+            course.id = result.getString(2);
+            course.name = result.getString(3);
+            course.credit = result.getInt(4);
+            course.classHour = result.getInt(5);
+            String grading = result.getString(6);
+            if (grading.equals("PASS_OR_FAIL")){
+                course.grading = PASS_OR_FAIL;
+            }else {
+                course.grading = HUNDRED_MARK_SCORE;
+            }
+            return course;
+
+        } catch (SQLException e) {
+            throw new EntityNotFoundException();
+        }
+    }
+
+
+
     /**
      * If there is no Course about specific id, throw EntityNotFoundException.
      * @param sectionId if the key is non-existent, please throw an EntityNotFoundException.
@@ -356,22 +386,22 @@ public class MyCourseService implements CourseService {
     @Override
     public Course getCourseBySection(int sectionId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select sectionName from courseSections where id = (?);");
+             PreparedStatement first_query = connection.prepareStatement("select courseId from courseSections where id = (?);");
              PreparedStatement second_query = connection.prepareStatement("select * from Courses where courseId = (?);")) {
             first_query.setInt(1, sectionId);
             ResultSet resultSet = first_query.executeQuery();
-            String sectionName = null;
+            String courseId = null;
             boolean empty = true;
             while (resultSet.next()){
                 empty = false;
-                sectionName = resultSet.getString(1);
+                courseId = resultSet.getString(1);
             };
 
             if (empty){
                 throw new EntityNotFoundException();
             }
             else {
-                second_query.setString(1, sectionName);
+                second_query.setString(1, courseId);
                 second_query.execute();
                 ResultSet result = second_query.getResultSet();
                 result.next();
@@ -518,13 +548,19 @@ public class MyCourseService implements CourseService {
     public List<Student> getEnrolledStudentsInSemester(String courseId, int semesterId) {
         ArrayList<Student> students = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select sectionId from courseSections where courseId = (?) and semesterId = (?);");
-             PreparedStatement second_query = connection.prepareStatement("select * from courseSections where id = (?);")
+             PreparedStatement getStudentId = connection.prepareStatement(
+                     "select studentId from students_sections where semesterId = (?) and courseId = (?) ");
         ) {
-            first_query.setString(1,courseId);
-            first_query.setInt(2,semesterId);
-            ResultSet resultSet = first_query.executeQuery();
-         //TODO: Not finished yet
+            getStudentId.setString(1,courseId);
+            getStudentId.setInt(2,semesterId);
+            ResultSet studentsSet = getStudentId.executeQuery();
+
+            MyStudentService studentService = new MyStudentService();
+            while (studentsSet.next()){
+                int studentId = studentsSet.getInt(1);
+                students.add(studentService.getStudentById(studentId));
+            }
+            return students;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }

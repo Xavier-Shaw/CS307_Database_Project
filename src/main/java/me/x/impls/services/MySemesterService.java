@@ -23,7 +23,7 @@ public class MySemesterService implements SemesterService {
     @Override
     public int addSemester(String name, Date begin, Date end) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("insert into Semesters (name, begin, end) values (?,?,?) ;");
+             PreparedStatement first_query = connection.prepareStatement("insert into Semesters (name, begin_date, end_date) values (?,?,?) ;");
         ) {
             if (begin.after(end)){
                 throw new IntegrityViolationException();

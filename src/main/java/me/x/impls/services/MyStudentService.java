@@ -11,10 +11,9 @@ import cn.edu.sustech.cs307.service.StudentService;
 
 import javax.annotation.Nullable;
 import java.sql.*;
+import java.sql.Date;
 import java.time.DayOfWeek;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class MyStudentService implements StudentService {
 
@@ -86,7 +85,12 @@ public class MyStudentService implements StudentService {
      * @return a list of search entries. See {@link cn.edu.sustech.cs307.dto.CourseSearchEntry}
      */
     @Override
-    public List<CourseSearchEntry> searchCourse(int studentId, int semesterId, @Nullable String searchCid, @Nullable String searchName, @Nullable String searchInstructor, @Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations, CourseType searchCourseType, boolean ignoreFull, boolean ignoreConflict, boolean ignorePassed, boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
+    public List<CourseSearchEntry> searchCourse(
+            int studentId, int semesterId,
+            @Nullable String searchCid, @Nullable String searchName, @Nullable String searchInstructor,
+            @Nullable DayOfWeek searchDayOfWeek, @Nullable Short searchClassTime, @Nullable List<String> searchClassLocations,
+            CourseType searchCourseType,
+            boolean ignoreFull, boolean ignoreConflict, boolean ignorePassed, boolean ignoreMissingPrerequisites, int pageSize, int pageIndex) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_query = connection.prepareStatement("");
              PreparedStatement second_query = connection.prepareStatement("")
@@ -120,9 +124,13 @@ public class MyStudentService implements StudentService {
              PreparedStatement get_course_section = connection.prepareStatement(
                      "select courseId, semesterId, leftCapacity from courseSections where id = (?)");
              PreparedStatement check_student_section = connection.prepareStatement(
-                     "select * from students_sections where studentId = (?) and sectionId = (?) and semesterId = (?);");
+                     "select sectionId from students_sections where studentId = (?) and courseId = (?) and semesterId = (?);");
              PreparedStatement check_passed_the_course = connection.prepareStatement(
                      "select grade from students_course_grade where studentId = (?) and courseId = (?);");
+             PreparedStatement enrollCourse = connection.prepareStatement(
+                     "insert into students_sections (studentId, semesterId, courseId, sectionId) values (?,?,?,?);"
+                     + "update courseSections set leftCapacity = leftCapacity - 1 where id = (?);"
+             )
         ) {
             /*TODO:
                 1.找不找得到对应的 course section           COURSE_NOT_FOUND
@@ -135,6 +143,8 @@ public class MyStudentService implements StudentService {
                 7. unknown error
                 8. success.
              */
+
+            //// check course not found
             get_course_section.setInt(1,sectionId);
             ResultSet selected_section_set = get_course_section.executeQuery();
             if (!selected_section_set.next()) {
@@ -144,14 +154,23 @@ public class MyStudentService implements StudentService {
             int semesterId = selected_section_set.getInt(2);
             int leftCapacity = selected_section_set.getInt(3);
 
+            //// check already_enroll
             check_student_section.setInt(1,studentId);
             check_student_section.setInt(2,sectionId);
             check_student_section.setInt(3,semesterId);
             ResultSet student_section_set = check_student_section.executeQuery();
-            if (student_section_set.next()){
-                return EnrollResult.ALREADY_ENROLLED;
+            boolean course_conflict_by_course = false;
+            while (student_section_set.next()){
+                int enrolled_sectionId = student_section_set.getInt(1);
+                if (enrolled_sectionId == sectionId) {
+                    return EnrollResult.ALREADY_ENROLLED;
+                }
+                else {
+                    course_conflict_by_course = true;
+                }
             }
 
+            //////check already pass
             check_passed_the_course.setInt(1,studentId);
             check_passed_the_course.setString(2,courseId);
             ResultSet score_result = check_passed_the_course.executeQuery();
@@ -161,6 +180,67 @@ public class MyStudentService implements StudentService {
                 return EnrollResult.ALREADY_PASSED;
             }
 
+            //////check prerequisite fulfilled
+            if (!passedPrerequisitesForCourse(studentId,courseId)){
+                return EnrollResult.PREREQUISITES_NOT_FULFILLED;
+            }
+
+            ////// check course conflict
+            if (course_conflict_by_course){
+                return EnrollResult.COURSE_CONFLICT_FOUND;
+            }
+
+            List<CourseSectionClass> classes_of_this_section = new MyCourseService().getCourseSectionClasses(sectionId);
+            for (CourseSectionClass section_class :
+                    classes_of_this_section) {
+                int week_first = (int) section_class.weekList.toArray()[0];
+                int week_second = (int) section_class.weekList.toArray()[1];
+                Calendar calendar = Calendar.getInstance();
+                Semester semester = new MySemesterService().getSemester(semesterId);
+                calendar.setTime(semester.begin);
+                int cnt = 0;
+                java.util.Date date1 = null;
+                java.util.Date date2;
+                while (true){
+                    calendar.add(Calendar.DAY_OF_WEEK,1);
+                    cnt ++;
+                    if (cnt == week_first){
+                        date1 = calendar.getTime();
+                    }
+                    if (cnt == week_second){
+                        date2 = calendar.getTime();
+                        break;
+                    }
+                }
+                CourseTable first_week = getCourseTable(studentId, (Date) date1);
+                for (CourseTable.CourseTableEntry c:
+                        first_week.table.get(section_class.dayOfWeek)) {
+                    if (!(c.classBegin >= section_class.classEnd || c.classEnd <= section_class.classBegin)){
+                        return EnrollResult.COURSE_CONFLICT_FOUND;
+                    }
+                }
+                CourseTable second_week = getCourseTable(studentId, (Date) date2);
+                for (CourseTable.CourseTableEntry c:
+                        second_week.table.get(section_class.dayOfWeek)) {
+                    if (!(c.classBegin >= section_class.classEnd || c.classEnd <= section_class.classBegin)){
+                        return EnrollResult.COURSE_CONFLICT_FOUND;
+                    }
+                }
+            }
+
+            ////// check course is full
+            if (leftCapacity == 0){
+                return EnrollResult.COURSE_IS_FULL;
+            }
+
+            /////// success
+            enrollCourse.setInt(1,studentId);
+            enrollCourse.setInt(2,semesterId);
+            enrollCourse.setString(3,courseId);
+            enrollCourse.setInt(4,sectionId);
+            enrollCourse.setInt(5,sectionId);
+            enrollCourse.execute();
+            return EnrollResult.SUCCESS;
 
         } catch (SQLException e) {
             throw new EntityNotFoundException();
@@ -199,7 +279,6 @@ public class MyStudentService implements StudentService {
             if (grade != -1){
                 throw new IllegalStateException();
             }
-
 
             drop_section.setInt(1,studentId);
             drop_section.setInt(2,sectionId);
@@ -355,12 +434,76 @@ public class MyStudentService implements StudentService {
      */
     @Override
     public Map<Course, Grade> getEnrolledCoursesAndGrades(int studentId, @Nullable Integer semesterId) {
-        Map<Course, Grade> courseGradeMap = new HashMap<>();
+        Map<Course, Grade> course_grade_Map = new HashMap<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("");
-             PreparedStatement second_query = connection.prepareStatement("")
+             PreparedStatement get_student_sections_by_semester = connection.prepareStatement(
+                     "select sectionId from students_sections where studentId = (?) and semesterId = (?);");
+             PreparedStatement getGrade = connection.prepareStatement(
+                     "select gradeType, grade from students_course_grade where studentId = (?) and courseId = (?);");
+             PreparedStatement getAllGrade = connection.prepareStatement(
+                     "select courseId, gradeType, grade from students_course_grade where studentId = (?);"
+             )
         ) {
+            get_student_sections_by_semester.setInt(1,studentId);
+            if (semesterId != null) {
+                get_student_sections_by_semester.setInt(2, semesterId);
+                ResultSet sections = get_student_sections_by_semester.executeQuery();
+                while (sections.next()){
+                    int sectionId = sections.getInt(1);
+                    Course course = new MyCourseService().getCourseBySection(sectionId);
+                    getGrade.setInt(1, studentId);
+                    getGrade.setString(2, course.id);
+                    ResultSet gradeSet = getGrade.executeQuery();
+                    gradeSet.next();
+                    String gradeType = gradeSet.getString(1);
+                    short score = gradeSet.getShort(2);
+                    Grade grade;
+                    if (gradeType.equals("HundredMarkGrade")){
+                        grade = new HundredMarkGrade(score);
+                    }
+                    else if (gradeType.equals("PassOrFailGrade")){
+                        if (score == 60){
+                            grade = PassOrFailGrade.PASS;
+                        }
+                        else {
+                            grade = PassOrFailGrade.FAIL;
+                        }
+                    }
+                    else {
+                        grade = null;
+                    }
+                    course_grade_Map.put(course,grade);
+                }
+            }
+            else {
+                getAllGrade.setInt(1,studentId);
+                ResultSet allGrades = getAllGrade.executeQuery();
+                while (allGrades.next()){
+                    String courseId = allGrades.getString(1);
+                    Course course = new MyCourseService().getCourseByCourseId(courseId);
+                    String gradeType = allGrades.getString(2);
+                    short score = allGrades.getShort(3);
+                    Grade grade;
+                    if (gradeType.equals("HundredMarkGrade")){
+                        grade = new HundredMarkGrade(score);
+                    }
+                    else if (gradeType.equals("PassOrFailGrade")){
+                        if (score == 60){
+                            grade = PassOrFailGrade.PASS;
+                        }
+                        else {
+                            grade = PassOrFailGrade.FAIL;
+                        }
+                    }
+                    else {
+                        grade = null;
+                    }
 
+                    course_grade_Map.put(course,grade);
+                }
+            }
+
+            return course_grade_Map;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -377,11 +520,184 @@ public class MyStudentService implements StudentService {
      */
     @Override
     public CourseTable getCourseTable(int studentId, Date date) {
-        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("");
-             PreparedStatement second_query = connection.prepareStatement("")
-        ) {
+        CourseTable courseTable = new CourseTable();
+        Set<CourseTable.CourseTableEntry> MONDAY_Set = new HashSet<>();
+        Set<CourseTable.CourseTableEntry> TUESDAY_Set = new HashSet<>();
+        Set<CourseTable.CourseTableEntry> WEDNESDAY_Set = new HashSet<>();
+        Set<CourseTable.CourseTableEntry> THURSDAY_Set = new HashSet<>();
+        Set<CourseTable.CourseTableEntry> FRIDAY_Set = new HashSet<>();
+        Set<CourseTable.CourseTableEntry> SATURDAY_Set = new HashSet<>();
+        Set<CourseTable.CourseTableEntry> SUNDAY_Set = new HashSet<>();
 
+        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
+             PreparedStatement getSemester = connection.prepareStatement(
+                     "select id, begin_date from Semesters where begin_date <= (?) and end_date >= (?);");
+             PreparedStatement get_student_sections = connection.prepareStatement(
+                     "select sectionId from students_sections where studentId = (?) and semesterId = (?);");
+             PreparedStatement get_section = connection.prepareStatement(
+                     "select courseId, sectionName from courseSections where sectionId = (?);"
+             )
+        ) {
+            getSemester.setDate(1,date);
+            getSemester.setDate(2,date);
+            ResultSet res_sem = getSemester.executeQuery();
+            res_sem.next();
+            int semesterId = res_sem.getInt(1);
+            Date begin = res_sem.getDate(2);
+
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTime(begin);
+            short week = 1;
+            while (true){
+                calendar.add(Calendar.DAY_OF_WEEK,1);
+                if (calendar.after(date)){
+                    break;
+                }
+                else {
+                    week++;
+                }
+            }
+
+            get_student_sections.setInt(1,studentId);
+            get_student_sections.setInt(2,semesterId);
+            ResultSet section_set = get_student_sections.executeQuery();
+            while (section_set.next()){
+                int sectionId = section_set.getInt(1);
+                get_section.setInt(1,sectionId);
+                ResultSet section_res = get_section.executeQuery();
+                section_res.next();
+                String courseId = section_res.getString(1);
+                String sectionName = section_res.getString(2);
+                Course course = new MyCourseService().getCourseByCourseId(courseId);
+                String courseName = course.name;
+                List<CourseSectionClass> classes = new MyCourseService().getCourseSectionClasses(sectionId);
+                for (CourseSectionClass courseSectionClass:
+                        classes) {
+                    if (courseSectionClass.weekList.contains(week)) {
+                        CourseTable.CourseTableEntry courseTableEntry = new CourseTable.CourseTableEntry();
+                        courseTableEntry.courseFullName = String.format("%s[%s]", courseName, sectionName);
+                        courseTableEntry.instructor = courseSectionClass.instructor;
+                        courseTableEntry.classBegin = courseSectionClass.classBegin;
+                        courseTableEntry.classEnd = courseSectionClass.classEnd;
+                        courseTableEntry.location = courseSectionClass.location;
+                        switch (courseSectionClass.dayOfWeek){
+                            case MONDAY:
+                                MONDAY_Set.add(courseTableEntry);
+                                break;
+                            case TUESDAY:
+                                TUESDAY_Set.add(courseTableEntry);
+                                break;
+                            case WEDNESDAY:
+                                WEDNESDAY_Set.add(courseTableEntry);
+                                break;
+                            case THURSDAY:
+                                THURSDAY_Set.add(courseTableEntry);
+                                break;
+                            case FRIDAY:
+                                FRIDAY_Set.add(courseTableEntry);
+                                break;
+                            case SATURDAY:
+                                SATURDAY_Set.add(courseTableEntry);
+                                break;
+                            case SUNDAY:
+                                SUNDAY_Set.add(courseTableEntry);
+                        }
+                    }
+                }
+            }
+
+            courseTable.table.put(DayOfWeek.MONDAY,MONDAY_Set);
+            courseTable.table.put(DayOfWeek.TUESDAY,TUESDAY_Set);
+            courseTable.table.put(DayOfWeek.WEDNESDAY,WEDNESDAY_Set);
+            courseTable.table.put(DayOfWeek.THURSDAY,THURSDAY_Set);
+            courseTable.table.put(DayOfWeek.FRIDAY,FRIDAY_Set);
+            courseTable.table.put(DayOfWeek.SATURDAY,SATURDAY_Set);
+            courseTable.table.put(DayOfWeek.SUNDAY,SUNDAY_Set);
+            return courseTable;
+        } catch (SQLException e) {
+            throw new EntityNotFoundException();
+        }
+    }
+
+
+    public boolean getGrade(int studentId, int listId){
+        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
+             PreparedStatement getAtomCourseId = connection.prepareStatement(
+                     "select courseId from AtomPrerequisites where listId = (?)");
+             PreparedStatement getGrade = connection.prepareStatement(
+                     "select grade from students_course_grade where studentId = (?) and courseId = (?);")
+        ) {
+            getAtomCourseId.setInt(1,listId);
+            ResultSet resultSet = getAtomCourseId.executeQuery();
+            resultSet.next();
+            String courseId = resultSet.getString(1);
+
+            getGrade.setInt(1, studentId);
+            getGrade.setString(2, courseId);
+            ResultSet gradeSet = getGrade.executeQuery();
+            gradeSet.next();
+            short score = gradeSet.getShort(2);
+            return score >= 60;
+        } catch (SQLException e) {
+            throw new EntityNotFoundException();
+        }
+    }
+
+
+    public boolean handlePrerequisite(int studentId, int listId){
+        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
+             PreparedStatement getType = connection.prepareStatement(
+                     "select type from prerequisite_list where id = (?)");
+             PreparedStatement getTerms = connection.prepareStatement(
+                     "select terms from ? where listId = (?)");
+        ) {
+            getType.setInt(1,listId);
+            ResultSet res = getType.executeQuery();
+            res.next();
+            String type = res.getString(1);
+            /**
+             * IDEA : divide the prerequisites into AtomPrerequisites to get if it is passed or not
+             *
+             * if the prerequisite we are handling now is a AtomPrerequisite,
+             * then the result of whether it is passed can be determined by the method getGrade()
+             *
+             * if the prerequisite we are handling now is a AndPrerequisite,
+             * then the result of whether it is passed or not depends on the && logic of its son_prerequisites
+             * because it can be judged as passed if and only if ALL of its son_prerequisites are passed
+             *
+             * if the prerequisite we are handling now is a OrPrerequisite,
+             * then the result of whether it is passed or not depends on the || logic of its son_prerequisites
+             * because it can be judged as passed if one of its son_prerequisite is passed
+             */
+            if (type.equals("ATOM")){
+                return getGrade(studentId,listId);
+            }
+            else if (type.equals("AND")){
+                getTerms.setString(1,"AndPrerequisites");
+                getTerms.setInt(2,listId);
+                ResultSet resultSet = getTerms.executeQuery();
+                resultSet.next();
+                Array array = resultSet.getArray(1);
+                ResultSet set = array.getResultSet();
+                boolean passed = true;
+                while (set.next()){
+                    passed = passed && handlePrerequisite(studentId, set.getInt(2));
+                }
+                return passed;
+            }
+            else {
+                getTerms.setString(1,"OrPrerequisites");
+                getTerms.setInt(2,listId);
+                ResultSet resultSet = getTerms.executeQuery();
+                resultSet.next();
+                Array array = resultSet.getArray(1);
+                ResultSet set = array.getResultSet();
+                boolean passed = false;
+                while (set.next()){
+                    passed = passed || handlePrerequisite(studentId, set.getInt(2));
+                }
+                return passed;
+            }
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -398,9 +714,19 @@ public class MyStudentService implements StudentService {
     @Override
     public boolean passedPrerequisitesForCourse(int studentId, String courseId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("");
-             PreparedStatement second_query = connection.prepareStatement("")
+             PreparedStatement get_root_prerequisite = connection.prepareStatement(
+                     "select root_prerequisite from Courses where courseId = (?);");
+
         ) {
+            get_root_prerequisite.setString(1,courseId);
+            ResultSet resultSet = get_root_prerequisite.executeQuery();
+            resultSet.next();
+            int root_id = resultSet.getInt(1);
+            if (root_id == 0){
+                return true;
+            }
+
+            return handlePrerequisite(studentId,root_id);
 
         } catch (SQLException e) {
             throw new EntityNotFoundException();
@@ -429,6 +755,41 @@ public class MyStudentService implements StudentService {
             major.department = new MyDepartmentService().getDepartment(departmentId);
 
             return major;
+        } catch (SQLException e) {
+            throw new EntityNotFoundException();
+        }
+    }
+
+
+    public Student getStudentById(int studentId){
+        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
+            PreparedStatement getStudent = connection.prepareStatement(
+                    "select userId, majorId, firstName, lastName, enrolledDate from Students where id = (?);"
+            )
+        ){
+            getStudent.setInt(1, studentId);
+            ResultSet studentSet = getStudent.executeQuery();
+            studentSet.next();
+            int userId = studentSet.getInt(1);
+            int majorId = studentSet.getInt(2);
+            String firstName = studentSet.getString(3);
+            String lastName = studentSet.getString(4);
+            Date enrolledDate = studentSet.getDate(5);
+            Major major = new MyMajorService().getMajor(majorId);
+            byte judge = (byte) firstName.charAt(0);
+            String fullName;
+            if ( (judge >= 65 && judge <= 90) || (judge >= 97 && judge <= 122)) {
+                fullName = firstName + " " + lastName;
+            }
+            else {
+                fullName = firstName + lastName;
+            }
+            Student student = new Student();
+            student.id = userId;
+            student.major = major;
+            student.fullName = fullName;
+            student.enrolledDate = enrolledDate;
+            return student;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
