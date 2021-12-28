@@ -177,13 +177,27 @@ public class MyCourseService implements CourseService {
     public int addCourseSection(String courseId, int semesterId, String sectionName, int totalCapacity) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "insert into \"courseSections\" (\"courseId\", \"semesterId\", \"sectionName\", \"totalCapacity\", \"leftCapacity\") values (?,?,?,?,?);")) {
+                     "insert into \"courseSections\" (\"courseId\", \"semesterId\", \"sectionName\", \"totalCapacity\", \"leftCapacity\") values (?,?,?,?,?);");
+             PreparedStatement query = connection.prepareStatement(
+                     "select id from \"courseSections\" where (\"courseId\", \"semesterId\", \"sectionName\", \"totalCapacity\", \"leftCapacity\") = (?,?,?,?,?)"
+             )
+        ) {
             stmt.setString(1, courseId);
             stmt.setInt(2,semesterId);
             stmt.setString(3,sectionName);
             stmt.setInt(4,totalCapacity);
             stmt.setInt(5,totalCapacity);
-            return stmt.executeUpdate();
+            stmt.execute();
+
+            query.setString(1, courseId);
+            query.setInt(2,semesterId);
+            query.setString(3,sectionName);
+            query.setInt(4,totalCapacity);
+            query.setInt(5,totalCapacity);
+
+            ResultSet resultSet = query.executeQuery();
+            resultSet.next();
+            return resultSet.getInt(1);
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -206,17 +220,35 @@ public class MyCourseService implements CourseService {
     public int addCourseSectionClass(int sectionId, int instructorId, DayOfWeek dayOfWeek, Set<Short> weekList, short classStart, short classEnd, String location) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "insert into \"courseSectionClasses\" (\"sectionId\", \"instructorId\", \"dayOfWeek\", \"weekList\", \"classStart\", \"classEnd\", location) values (?,?,?,?,?,?,?);")) {
+                     "insert into \"courseSectionClasses\" (\"sectionId\", \"instructorId\", \"dayOfWeek\", \"weekList\", \"classStart\", \"classEnd\", location) " +
+                             "values (?,?,?,?,?,?,?);");
+             PreparedStatement query = connection.prepareStatement(
+                     "select id from \"courseSectionClasses\" where (\"sectionId\", \"instructorId\", \"dayOfWeek\", \"weekList\", \"classStart\", \"classEnd\", location) " +
+                             "= (?,?,?,?,?,?,?);"
+             )
+             ) {
             stmt.setInt(1,sectionId);
             stmt.setInt(2,instructorId);
             stmt.setString(3, dayOfWeek.name());
             Short[] weeks = weekList.toArray(new Short[0]);
             Array array = connection.createArrayOf("int",weeks);
             stmt.setArray(4, array);
-            stmt.setInt(5,classStart);
-            stmt.setInt(6,classEnd);
+            stmt.setShort(5,classStart);
+            stmt.setShort(6,classEnd);
             stmt.setString(7,location);
-            return stmt.executeUpdate();
+            stmt.execute();
+
+            query.setInt(1,sectionId);
+            query.setInt(2,instructorId);
+            query.setString(3, dayOfWeek.name());
+            query.setArray(4, array);
+            query.setShort(5,classStart);
+            query.setShort(6,classEnd);
+            query.setString(7,location);
+
+            ResultSet resultSet = query.executeQuery();
+            resultSet.next();
+            return resultSet.getInt(1);
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -267,18 +299,10 @@ public class MyCourseService implements CourseService {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
                      "delete from \"courseSections\" where (id) = (?);");
-             PreparedStatement query = connection.prepareStatement(
-                     "select id from \"courseSectionClasses\" where \"sectionId\" = (?)"
-             )
         ) {
             stmt.setInt(1, sectionId);
-            query.setInt(1,sectionId);
             stmt.execute();
-            ResultSet resultSet = query.executeQuery();
-            while (resultSet.next()){
-                int classId = resultSet.getInt(1);
-                removeCourseSectionClass(classId);
-            }
+
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -351,9 +375,8 @@ public class MyCourseService implements CourseService {
             stmt.setString(1,courseId);
             stmt.setInt(2,semesterId);
             ResultSet resultSet = stmt.executeQuery();
-            boolean empty = true;
+
             while (resultSet.next()){
-                empty = false;
                 CourseSection courseSection= new CourseSection();
                 courseSection.id = resultSet.getInt(1);
                 courseSection.name = resultSet.getString(4);
@@ -362,38 +385,8 @@ public class MyCourseService implements CourseService {
                 sections.add(courseSection);
             }
 
-            if (empty){
-                throw new EntityNotFoundException();
-            }
-            else {
-                return sections;
-            }
-        } catch (SQLException e) {
-            throw new EntityNotFoundException();
-        }
-    }
 
-
-
-    public Course getCourseByCourseId(String courseId){
-        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement getCourse = connection.prepareStatement("select * from \"Courses\" where \"courseId\" = (?);")) {
-
-            getCourse.setString(1, courseId);
-            ResultSet result = getCourse.executeQuery();
-            result.next();
-            Course course = new Course();    //first column is the auto inc id
-            course.id = result.getString(2);
-            course.name = result.getString(3);
-            course.credit = result.getInt(4);
-            course.classHour = result.getInt(5);
-            String grading = result.getString(6);
-            if (grading.equals("PASS_OR_FAIL")){
-                course.grading = PASS_OR_FAIL;
-            }else {
-                course.grading = HUNDRED_MARK_SCORE;
-            }
-            return course;
+            return sections;
 
         } catch (SQLException e) {
             throw new EntityNotFoundException();
@@ -411,37 +404,33 @@ public class MyCourseService implements CourseService {
     public Course getCourseBySection(int sectionId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_query = connection.prepareStatement("select \"courseId\" from \"courseSections\" where id = (?);");
-             PreparedStatement second_query = connection.prepareStatement("select * from \"Courses\" where \"courseId\" = (?);")) {
+             PreparedStatement second_query = connection.prepareStatement("select \"courseName\", credit, \"classHour\", grading from \"Courses\" where \"courseId\" = (?);")
+        ) {
             first_query.setInt(1, sectionId);
             ResultSet resultSet = first_query.executeQuery();
-            String courseId = null;
-            boolean empty = true;
-            while (resultSet.next()){
-                empty = false;
-                courseId = resultSet.getString(1);
+
+            if (!resultSet.next()){
+                throw new EntityNotFoundException();
             };
 
-            if (empty){
-                throw new EntityNotFoundException();
+            String courseId = resultSet.getString(1);
+
+            second_query.setString(1, courseId);
+            ResultSet result = second_query.executeQuery();
+            result.next();
+            Course course = new Course();    //first column is the auto inc id
+            course.id = courseId;
+            course.name = result.getString(1);
+            course.credit = result.getInt(2);
+            course.classHour = result.getInt(3);
+            String grading = result.getString(4);
+            if (grading.equals("PASS_OR_FAIL")){
+                course.grading = PASS_OR_FAIL;
+            }else {
+                course.grading = HUNDRED_MARK_SCORE;
             }
-            else {
-                second_query.setString(1, courseId);
-                second_query.execute();
-                ResultSet result = second_query.getResultSet();
-                result.next();
-                Course course = new Course();    //first column is the auto inc id
-                course.id = result.getString(2);
-                course.name = result.getString(3);
-                course.credit = result.getInt(4);
-                course.classHour = result.getInt(5);
-                String grading = result.getString(6);
-                if (grading.equals("PASS_OR_FAIL")){
-                    course.grading = PASS_OR_FAIL;
-                }else {
-                    course.grading = HUNDRED_MARK_SCORE;
-                }
-                return course;
-            }
+
+            return course;
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -463,9 +452,8 @@ public class MyCourseService implements CourseService {
         ) {
             first_query.setInt(1, sectionId);
             ResultSet resultSet = first_query.executeQuery();
-            boolean empty = true;
+
             while (resultSet.next()){
-                empty = false;
                 CourseSectionClass courseSectionClass = new CourseSectionClass();
                 int instructorId = resultSet.getInt(3);
                 MyUserService myUserService = new MyUserService();
@@ -510,12 +498,9 @@ public class MyCourseService implements CourseService {
                 classes.add(courseSectionClass);
             }
 
-            if (empty){
-                throw new EntityNotFoundException();
-            }
-            else {
-                return classes;
-            }
+
+            return classes;
+
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -573,16 +558,38 @@ public class MyCourseService implements CourseService {
         ArrayList<Student> students = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement getStudentId = connection.prepareStatement(
-                     "select \"studentId\" from students_sections where \"semesterId\" = (?) and \"courseId\" = (?) ");
+                     "select get_student_in_semester(?,?)");
         ) {
             getStudentId.setString(1,courseId);
             getStudentId.setInt(2,semesterId);
-            ResultSet studentsSet = getStudentId.executeQuery();
+            ResultSet resultSet = getStudentId.executeQuery();
 
-            MyStudentService studentService = new MyStudentService();
-            while (studentsSet.next()){
-                int studentId = studentsSet.getInt(1);
-                students.add(studentService.getStudentById(studentId));
+            while (resultSet.next()){
+                Student student = new Student();
+                student.id = resultSet.getInt(1);
+                String firstName = resultSet.getString(2);
+                String lastName = resultSet.getString(3);
+                byte judge = (byte) firstName.charAt(0);
+                String fullName;
+                if ((judge >= 65 && judge <= 90) || (judge >= 97 && judge <= 122)) {
+                    fullName = firstName + " " + lastName;
+                } else {
+                    fullName = firstName + lastName;
+                }
+                student.fullName = fullName;
+                student.enrolledDate = resultSet.getDate(4);
+
+                Major major = new Major();
+                major.id = resultSet.getInt(5);
+                major.name = resultSet.getString(6);
+                Department department = new Department();
+                department.id = resultSet.getInt(7);
+                department.name = resultSet.getString(8);
+                major.department = department;
+
+                student.major = major;
+
+                students.add(student);
             }
             return students;
         } catch (SQLException e) {

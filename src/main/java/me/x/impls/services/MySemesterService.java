@@ -23,17 +23,27 @@ public class MySemesterService implements SemesterService {
     @Override
     public int addSemester(String name, Date begin, Date end) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("insert into \"Semesters\" (name, begin_date, end_date) values (?,?,?) ;");
+             PreparedStatement stmt = connection.prepareStatement(
+                     "insert into \"Semesters\" (name, begin_date, end_date) values (?,?,?) ;");
+             PreparedStatement query = connection.prepareStatement(
+                     "select id from \"Semesters\" where (name, begin_date, end_date) = (?,?,?) ;"
+             )
         ) {
             if (begin.after(end)){
                 throw new IntegrityViolationException();
             }
 
-            first_query.setString(1,name);
-            first_query.setDate(2,begin);
-            first_query.setDate(3,end);
-            return first_query.executeUpdate();
+            stmt.setString(1,name);
+            stmt.setDate(2,begin);
+            stmt.setDate(3,end);
+            stmt.execute();
 
+            query.setString(1,name);
+            query.setDate(2,begin);
+            query.setDate(3,end);
+            ResultSet resultSet = query.executeQuery();
+            resultSet.next();
+            return resultSet.getInt(1);
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }

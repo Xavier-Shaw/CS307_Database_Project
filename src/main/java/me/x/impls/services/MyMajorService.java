@@ -46,7 +46,6 @@ public class MyMajorService implements MajorService {
     public void removeMajor(int majorId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement first_query = connection.prepareStatement("delete from \"Majors\" where id = (?)");
-             PreparedStatement second_query = connection.prepareStatement("")
         ) {
             first_query.setInt(1,majorId);
             first_query.execute();
@@ -112,15 +111,11 @@ public class MyMajorService implements MajorService {
     @Override
     public void addMajorCompulsoryCourse(int majorId, String courseId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select id from \"Courses\" where \"courseId\" = (?);");
-             PreparedStatement second_query = connection.prepareStatement("insert into \"majorCourses\" (\"majorId\", \"courseId\", selection) values (?, ?, 'COMPULSORY')")
+             PreparedStatement second_query = connection.prepareStatement("insert into \"majorCourses\" (\"majorId\", \"courseId\", selection) values (?, ?, ?)")
         ) {
-            first_query.setString(1,courseId);
-            ResultSet resultSet = first_query.executeQuery();
-            resultSet.next();
-            int id = resultSet.getInt(1);
             second_query.setInt(1,majorId);
-            second_query.setInt(2,id);
+            second_query.setString(2,courseId);
+            second_query.setString(3,"COMPULSORY");
             second_query.execute();
         } catch (SQLException e) {
             throw new EntityNotFoundException();
@@ -136,15 +131,11 @@ public class MyMajorService implements MajorService {
     @Override
     public void addMajorElectiveCourse(int majorId, String courseId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select id from \"Courses\" where \"courseId\" = (?);");
-             PreparedStatement second_query = connection.prepareStatement("insert into \"majorCourses\" (\"majorId\", \"courseId\", selection) values (?, ?, 'ELECTIVE')")
+             PreparedStatement second_query = connection.prepareStatement("insert into \"majorCourses\" (\"majorId\", \"courseId\", selection) values (?, ?, ?)")
         ) {
-            first_query.setString(1,courseId);
-            ResultSet resultSet = first_query.executeQuery();
-            resultSet.next();
-            int id = resultSet.getInt(1);
             second_query.setInt(1,majorId);
-            second_query.setInt(2,id);
+            second_query.setString(2,courseId);
+            second_query.setString(3,"ELECTIVE");
             second_query.execute();
         } catch (SQLException e) {
             throw new EntityNotFoundException();

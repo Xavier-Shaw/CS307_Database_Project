@@ -79,7 +79,7 @@ public class MyUserService implements UserService {
     @Override
     public User getUser(int userId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from \"Users\" where id = (?)");
+             PreparedStatement first_query = connection.prepareStatement("select * from \"Users\" where \"userId\" = (?)");
         ) {
             first_query.setInt(1,userId);
             ResultSet resultSet = first_query.executeQuery();
