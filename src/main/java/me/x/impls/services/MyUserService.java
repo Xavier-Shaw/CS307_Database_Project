@@ -18,20 +18,6 @@ public class MyUserService implements UserService {
 
     // level : Instructor / Student
 
-    public void addUser(int userId, String firstName, String lastName){
-        try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement(
-                     "insert into \"Users\" (\"userId\", \"firstName\", \"lastName\") values (?,?,?);");
-        ) {
-            first_query.setInt(1,userId);
-            first_query.setString(2,firstName);
-            first_query.setString(3,lastName);
-            first_query.execute();
-        } catch (SQLException e) {
-            throw new IntegrityViolationException();
-        }
-    }
-
 
     @Override
     public void removeUser(int userId) {

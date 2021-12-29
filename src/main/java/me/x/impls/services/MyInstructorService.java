@@ -22,16 +22,15 @@ public class MyInstructorService implements InstructorService {
                      "insert into \"Users\" (\"userId\", \"firstName\", \"lastName\") values (?,?,?);"
              )
         ) {
+            stmt.setInt(1,userId);
+            stmt.setString(2,firstName);
+            stmt.setString(3,lastName);
+            stmt.execute();
 
             first_query.setInt(1,userId);
             first_query.setString(2,firstName);
             first_query.setString(3,lastName);
             first_query.execute();
-
-            stmt.setInt(1,userId);
-            stmt.setString(2,firstName);
-            stmt.setString(3,lastName);
-            stmt.execute();
 
         } catch (SQLException e) {
             throw new EntityNotFoundException();
@@ -63,6 +62,7 @@ public class MyInstructorService implements InstructorService {
         }
     }
 
+    //TODO: create a new function
 
     @Override
     public List<CourseSection> getInstructedCourseSections(int instructorId, int semesterId) {

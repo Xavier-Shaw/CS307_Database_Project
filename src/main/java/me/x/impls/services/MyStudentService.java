@@ -39,6 +39,11 @@ public class MyStudentService implements StudentService {
                      "insert into \"Users\" (\"userId\", \"firstName\", \"lastName\") values (?,?,?);"
              )
         ) {
+            stmt.setInt(1, userId);
+            stmt.setString(2, firstName);
+            stmt.setString(3, lastName);
+            stmt.execute();
+
             first_query.setInt(1, userId);
             first_query.setInt(2, majorId);
             first_query.setString(3, firstName);
@@ -46,10 +51,6 @@ public class MyStudentService implements StudentService {
             first_query.setDate(5, enrolledDate);
             first_query.execute();
 
-            stmt.setInt(1, userId);
-            stmt.setString(2, firstName);
-            stmt.setString(3, lastName);
-            stmt.execute();
         } catch (SQLException e) {
             throw new IntegrityViolationException();
         }
@@ -98,7 +99,7 @@ public class MyStudentService implements StudentService {
         ArrayList<CourseSearchEntry> arrayList = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
-                     "select * from searchCourse(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
+                     "select * from search_course(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);")
         ) {
             stmt.setInt(1, studentId);
             stmt.setInt(2, semesterId);
@@ -142,19 +143,26 @@ public class MyStudentService implements StudentService {
             stmt.setInt(14, pageSize);
             stmt.setInt(15, pageIndex);
             stmt.execute();
+
             ResultSet result = stmt.getResultSet();
             MyCourseService myCourseService = new MyCourseService();
             while (result.next()) {
                 CourseSearchEntry courseSearchEntry = new CourseSearchEntry();
-                courseSearchEntry.course = myCourseService.getCourseBySection(result.getInt(1));
+                courseSearchEntry.course = new Course();
+                courseSearchEntry.course.id = result.getString(1);
+                courseSearchEntry.course.name = result.getString(2);
+                courseSearchEntry.course.credit = result.getInt(3);
+                courseSearchEntry.course.classHour = result.getInt(4);
+                courseSearchEntry.course.grading = Course.CourseGrading.valueOf(result.getString(5));
                 courseSearchEntry.section = new CourseSection();
-                courseSearchEntry.section.id = result.getInt(1);
-                courseSearchEntry.section.totalCapacity = result.getInt(6);
-                courseSearchEntry.section.leftCapacity = result.getInt(7);
-                courseSearchEntry.section.name = result.getString(5);
-                courseSearchEntry.sectionClasses = new HashSet<>(myCourseService.getCourseSectionClasses(result.getInt(1)));
+                courseSearchEntry.section.id = result.getInt(6);
+                courseSearchEntry.section.name = result.getString(7);
+                courseSearchEntry.section.totalCapacity = result.getInt(8);
+                courseSearchEntry.section.leftCapacity = result.getInt(9);
+
+                courseSearchEntry.sectionClasses = new HashSet<>(myCourseService.getCourseSectionClasses(result.getInt(6)));
                 courseSearchEntry.conflictCourseNames = new ArrayList<>();
-                Array arr = result.getArray(13);
+                Array arr = result.getArray(10);
                 if (arr != null) {
                     ResultSet rs = arr.getResultSet();
                     while (rs.next()) {
@@ -190,11 +198,13 @@ public class MyStudentService implements StudentService {
     public EnrollResult enrollCourse(int studentId, int sectionId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement get_course_section = connection.prepareStatement(
-                     "select \"leftCapacity\" from \"courseSections\" where id = (?)");
+                     "select * from \"courseSections\" where id = (?)");
              PreparedStatement check_section_selected = connection.prepareStatement(
                      "select \"sectionId\" from course_select where \"studentId\" = (?) and \"sectionId\" = (?);");
              PreparedStatement check_passed_the_course = connection.prepareStatement(
                      "select check_course_passed(?,?)");
+             PreparedStatement checkCourseFull = connection.prepareStatement(
+                     "select check_course_full(?);");
              PreparedStatement check_time = connection.prepareStatement(
                      "select get_time_bad(?,?) is null;"
              );
@@ -221,7 +231,6 @@ public class MyStudentService implements StudentService {
             if (!selected_section_set.next()) {
                 return EnrollResult.COURSE_NOT_FOUND;
             }
-            int leftCapacity = selected_section_set.getInt(1);
 
 
             //// check already_enroll
@@ -267,7 +276,11 @@ public class MyStudentService implements StudentService {
 
 
             ////// check course is full
-            if (leftCapacity == 0) {
+            checkCourseFull.setInt(1, sectionId);
+            checkCourseFull.execute();
+            ResultSet result = checkCourseFull.getResultSet();
+            result.next();
+            if (result.getBoolean(1)) {
                 return EnrollResult.COURSE_IS_FULL;
             }
 
@@ -337,38 +350,36 @@ public class MyStudentService implements StudentService {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement updateGrade = connection.prepareStatement(
                      "select add_course_with_grade(?,?,?,?);");
-             PreparedStatement setGrade = connection.prepareStatement(
-                     "insert into course_select (\"studentId\", \"sectionId\") values (?,?);")
         ) {
+            updateGrade.setInt(1,studentId);
+            updateGrade.setInt(2,sectionId);
 
             if (grade != null) {
                 String gradeType;
-                short score ;
+                short score;
                 if (grade instanceof HundredMarkGrade) {
-                    gradeType = "HundredMarkGrade";
                     score = ((HundredMarkGrade) grade).mark;
+                    gradeType = "HUNDRED_MARK_SCORE";
                 }
                 else {
-                    gradeType = "PassOrFailGrade";
-                    boolean pass = grade == PassOrFailGrade.PASS;
+                    gradeType = "PASS_OR_FAIL";
+                    boolean pass = grade.equals(PassOrFailGrade.PASS);
                     if (pass) {
                         score = 60;
                     } else {
                         score = 0;
                     }
                 }
-                updateGrade.setInt(1,studentId);
-                updateGrade.setInt(2,sectionId);
+
                 updateGrade.setString(3,gradeType);
                 updateGrade.setShort(4,score);
-                updateGrade.execute();
             }
             else {
-                setGrade.setInt(1, studentId);
-                setGrade.setInt(2, sectionId);
-                setGrade.execute();
+                updateGrade.setNull(3,Types.VARCHAR);
+                updateGrade.setNull(4,Types.SMALLINT);
             }
 
+            updateGrade.execute();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -389,18 +400,18 @@ public class MyStudentService implements StudentService {
                      "update course_select set \"gradeType\" = (?) and grade = (?) where \"studentId\" = (?) and \"sectionId\" = (?)")
         ) {
             if (grade instanceof HundredMarkGrade) {
-                setGarde.setString(1, "HundredMarkGrade");
+                setGarde.setString(1, "HUNDRED_MARK_SCORE");
                 setGarde.setShort(2, ((HundredMarkGrade) grade).mark);
             }
             else if (grade instanceof PassOrFailGrade) {
                 short score;
-                boolean pass = (grade == PassOrFailGrade.PASS);
+                boolean pass = (grade.equals(PassOrFailGrade.PASS));
                 if (pass) {
                     score = 60;
                 } else {
                     score = 0;
                 }
-                setGarde.setString(1, "PassOrFailGrade");
+                setGarde.setString(1, "PASS_OR_FAIL");
                 setGarde.setShort(2, score);
             }
 
@@ -456,19 +467,14 @@ public class MyStudentService implements StudentService {
                 course.name = res.getString(2);
                 course.credit = res.getInt(3);
                 course.classHour = res.getInt(4);
-                String grading = res.getString(5);
-                if (grading.equals("HundredMarkGrade")) {
-                    course.grading = Course.CourseGrading.HUNDRED_MARK_SCORE;
-                } else {
-                    course.grading = Course.CourseGrading.PASS_OR_FAIL;
-                }
+                course.grading = Course.CourseGrading.valueOf(res.getString(5));
 
                 String gradeType = res.getString(6);
                 short score = res.getShort(7);
                 Grade grade;
-                if (gradeType.equals("HundredMarkGrade")) {
+                if (gradeType.equals("HUNDRED_MARK_SCORE")) {
                     grade = new HundredMarkGrade(score);
-                } else if (gradeType.equals("PassOrFailGrade")) {
+                } else if (gradeType.equals("PASS_OR_FAIL")) {
                     if (score == 60) {
                         grade = PassOrFailGrade.PASS;
                     } else {
@@ -499,13 +505,11 @@ public class MyStudentService implements StudentService {
     @Override
     public CourseTable getCourseTable(int studentId, Date date) {
         CourseTable courseTable = new CourseTable();
-        Set<CourseTable.CourseTableEntry> MONDAY_Set = new HashSet<>();
-        Set<CourseTable.CourseTableEntry> TUESDAY_Set = new HashSet<>();
-        Set<CourseTable.CourseTableEntry> WEDNESDAY_Set = new HashSet<>();
-        Set<CourseTable.CourseTableEntry> THURSDAY_Set = new HashSet<>();
-        Set<CourseTable.CourseTableEntry> FRIDAY_Set = new HashSet<>();
-        Set<CourseTable.CourseTableEntry> SATURDAY_Set = new HashSet<>();
-        Set<CourseTable.CourseTableEntry> SUNDAY_Set = new HashSet<>();
+        courseTable.table = new HashMap<>();
+        for (DayOfWeek day :
+                DayOfWeek.values()) {
+            courseTable.table.put(day, new HashSet<>());
+        }
 
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement getCourseTable = connection.prepareStatement(
@@ -559,37 +563,10 @@ public class MyStudentService implements StudentService {
                 courseTableEntry.location = res.getString(8);
                 String dayOfWeek = res.getString(9);
 
-                switch (dayOfWeek) {
-                    case "MONDAY":
-                        MONDAY_Set.add(courseTableEntry);
-                        break;
-                    case "TUESDAY":
-                        TUESDAY_Set.add(courseTableEntry);
-                        break;
-                    case "WEDNESDAY":
-                        WEDNESDAY_Set.add(courseTableEntry);
-                        break;
-                    case "THURSDAY":
-                        THURSDAY_Set.add(courseTableEntry);
-                        break;
-                    case "FRIDAY":
-                        FRIDAY_Set.add(courseTableEntry);
-                        break;
-                    case "SATURDAY":
-                        SATURDAY_Set.add(courseTableEntry);
-                        break;
-                    case "SUNDAY":
-                        SUNDAY_Set.add(courseTableEntry);
-                }
+                courseTable.table.get(DayOfWeek.valueOf(dayOfWeek)).add(courseTableEntry);
             }
 
-            courseTable.table.put(DayOfWeek.MONDAY, MONDAY_Set);
-            courseTable.table.put(DayOfWeek.TUESDAY, TUESDAY_Set);
-            courseTable.table.put(DayOfWeek.WEDNESDAY, WEDNESDAY_Set);
-            courseTable.table.put(DayOfWeek.THURSDAY, THURSDAY_Set);
-            courseTable.table.put(DayOfWeek.FRIDAY, FRIDAY_Set);
-            courseTable.table.put(DayOfWeek.SATURDAY, SATURDAY_Set);
-            courseTable.table.put(DayOfWeek.SUNDAY, SUNDAY_Set);
+
             return courseTable;
         } catch (SQLException e) {
             return courseTable;

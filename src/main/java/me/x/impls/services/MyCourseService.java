@@ -2,6 +2,7 @@ package me.x.impls.services;
 
 import cn.edu.sustech.cs307.database.SQLDataSource;
 import cn.edu.sustech.cs307.dto.*;
+import cn.edu.sustech.cs307.dto.grade.Grade;
 import cn.edu.sustech.cs307.dto.prerequisite.AndPrerequisite;
 import cn.edu.sustech.cs307.dto.prerequisite.CoursePrerequisite;
 import cn.edu.sustech.cs307.dto.prerequisite.OrPrerequisite;
@@ -240,7 +241,7 @@ public class MyCourseService implements CourseService {
 
             query.setInt(1,sectionId);
             query.setInt(2,instructorId);
-            query.setString(3, dayOfWeek.name());
+            query.setString(3, dayOfWeek.toString());
             query.setArray(4, array);
             query.setShort(5,classStart);
             query.setShort(6,classEnd);
@@ -268,18 +269,10 @@ public class MyCourseService implements CourseService {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
              PreparedStatement stmt = connection.prepareStatement(
                      "delete from \"Courses\" where (\"courseId\") = (?);");
-             PreparedStatement query = connection.prepareStatement(
-                     "select id from \"courseSections\" where \"courseId\" = (?) "
-             )
         ) {
             stmt.setString(1, courseId);
-            query.setString(1,courseId);
             stmt.execute();
-            ResultSet resultSet = query.executeQuery();
-            while (resultSet.next()){
-                int sectionId = resultSet.getInt(1);
-                removeCourseSection(sectionId);
-            }
+
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
@@ -340,13 +333,7 @@ public class MyCourseService implements CourseService {
                 course.name = resultSet.getString(3);
                 course.credit = resultSet.getInt(4);
                 course.classHour = resultSet.getInt(5);
-                String grading = resultSet.getString(6);
-                if (grading.equals("PASS_OR_FAIL")){
-                    course.grading = PASS_OR_FAIL;
-                }
-                else {
-                    course.grading = HUNDRED_MARK_SCORE;
-                }
+                course.grading = Course.CourseGrading.valueOf(resultSet.getString(6));
                 courses.add(course);
             }
             return courses;
@@ -371,7 +358,9 @@ public class MyCourseService implements CourseService {
     public List<CourseSection> getCourseSectionsInSemester(String courseId, int semesterId) {
         ArrayList<CourseSection> sections = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement stmt = connection.prepareStatement("select * from \"courseSections\" where \"courseId\" = (?) and \"semesterId\" = (?);")) {
+             PreparedStatement stmt = connection.prepareStatement(
+                     "select * from \"courseSections\" where \"courseId\" = (?) and \"semesterId\" = (?);")) {
+
             stmt.setString(1,courseId);
             stmt.setInt(2,semesterId);
             ResultSet resultSet = stmt.executeQuery();
@@ -409,10 +398,7 @@ public class MyCourseService implements CourseService {
             first_query.setInt(1, sectionId);
             ResultSet resultSet = first_query.executeQuery();
 
-            if (!resultSet.next()){
-                throw new EntityNotFoundException();
-            };
-
+            resultSet.next();
             String courseId = resultSet.getString(1);
 
             second_query.setString(1, courseId);
@@ -423,12 +409,7 @@ public class MyCourseService implements CourseService {
             course.name = result.getString(1);
             course.credit = result.getInt(2);
             course.classHour = result.getInt(3);
-            String grading = result.getString(4);
-            if (grading.equals("PASS_OR_FAIL")){
-                course.grading = PASS_OR_FAIL;
-            }else {
-                course.grading = HUNDRED_MARK_SCORE;
-            }
+            course.grading = Course.CourseGrading.valueOf(result.getString(4));
 
             return course;
         } catch (SQLException e) {
@@ -448,7 +429,8 @@ public class MyCourseService implements CourseService {
     public List<CourseSectionClass> getCourseSectionClasses(int sectionId) {
         ArrayList<CourseSectionClass> classes = new ArrayList<>();
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select * from \"courseSectionClasses\" where \"sectionId\" = (?);")
+             PreparedStatement first_query = connection.prepareStatement(
+                     "select * from \"courseSectionClasses\" where \"sectionId\" = (?);")
         ) {
             first_query.setInt(1, sectionId);
             ResultSet resultSet = first_query.executeQuery();
@@ -460,44 +442,21 @@ public class MyCourseService implements CourseService {
                 Instructor instructor = (Instructor)myUserService.getUser(instructorId);
                 courseSectionClass.id = resultSet.getInt(1);
                 courseSectionClass.instructor = instructor;
-                String dayOfWeek = resultSet.getString(4);
-                switch (dayOfWeek){
-                    case "MONDAY":
-                        courseSectionClass.dayOfWeek = DayOfWeek.MONDAY;
-                        break;
-                    case "TUESDAY":
-                        courseSectionClass.dayOfWeek = DayOfWeek.TUESDAY;
-                        break;
-                    case "WEDNESDAY":
-                        courseSectionClass.dayOfWeek = DayOfWeek.WEDNESDAY;
-                        break;
-                    case "THURSDAY":
-                        courseSectionClass.dayOfWeek = DayOfWeek.THURSDAY;
-                        break;
-                    case "FRIDAY":
-                        courseSectionClass.dayOfWeek = DayOfWeek.FRIDAY;
-                        break;
-                    case "SATURDAY":
-                        courseSectionClass.dayOfWeek = DayOfWeek.SATURDAY;
-                        break;
-                    case "SUNDAY":
-                        courseSectionClass.dayOfWeek = DayOfWeek.SUNDAY;
-                        break;
-                }
+                courseSectionClass.dayOfWeek = DayOfWeek.valueOf(resultSet.getString(4));
                 Array array = resultSet.getArray(5);
-                Set<Short> weekList = new HashSet<>();
+
                 ResultSet res = array.getResultSet();
+                courseSectionClass.weekList = new HashSet<>();
                 while (res.next()){
-                    weekList.add(res.getShort(2));  //second column stores value
+                    courseSectionClass.weekList.add(res.getShort(2));
                 }
-                courseSectionClass.weekList = weekList;
+
                 courseSectionClass.classBegin = resultSet.getShort(6);
                 courseSectionClass.classEnd = resultSet.getShort(7);
                 courseSectionClass.location = resultSet.getString(8);
 
                 classes.add(courseSectionClass);
             }
-
 
             return classes;
 
@@ -516,31 +475,28 @@ public class MyCourseService implements CourseService {
     @Override
     public CourseSection getCourseSectionByClass(int classId) {
         try (Connection connection = SQLDataSource.getInstance().getSQLConnection();
-             PreparedStatement first_query = connection.prepareStatement("select \"sectionId\" from \"courseSectionClasses\" where id = (?);");
-             PreparedStatement second_query = connection.prepareStatement("select * from \"courseSections\" where id = (?);")
+             PreparedStatement first_query = connection.prepareStatement(
+                     "select \"sectionId\" from \"courseSectionClasses\" where id = (?);");
+             PreparedStatement second_query = connection.prepareStatement(
+                     "select id, \"sectionName\", \"totalCapacity\", \"leftCapacity\" from \"courseSections\" where id = (?);")
         ) {
             first_query.setInt(1,classId);
             ResultSet resultSet = first_query.executeQuery();
-            boolean empty = true;
-            int sectionId = 0;
-            while (resultSet.next()){
-                empty = false;
-                sectionId = resultSet.getInt(2);
-            }
-            if (empty){
-                throw new EntityNotFoundException();
-            }
-            else {
-                CourseSection courseSection = new CourseSection();
-                second_query.setInt(1,sectionId);
-                ResultSet result = second_query.executeQuery();
-                result.next();
-                courseSection.id = result.getInt(1);
-                courseSection.name = result.getString(4);
-                courseSection.totalCapacity = result.getInt(5);
-                courseSection.leftCapacity = result.getInt(6);
-                return courseSection;
-            }
+
+            resultSet.next();
+            int sectionId = resultSet.getInt(1);
+
+
+            CourseSection courseSection = new CourseSection();
+            second_query.setInt(1,sectionId);
+            ResultSet result = second_query.executeQuery();
+            result.next();
+            courseSection.id = result.getInt(1);
+            courseSection.name = result.getString(2);
+            courseSection.totalCapacity = result.getInt(3);
+            courseSection.leftCapacity = result.getInt(4);
+            return courseSection;
+
         } catch (SQLException e) {
             throw new EntityNotFoundException();
         }
